@@ -1,24 +1,31 @@
 import type { ImageAsset } from './model';
 
 export const STORAGE_KEY = 'framesense.document.v1';
+export const IMAGE_STORAGE_KEY = `${STORAGE_KEY}.image`;
 
 export interface StorageService {
-  read(): string | null;
-  write(value: string): void;
+  read(key?: string): string | null;
+  write(value: string, key?: string): void;
+  remove?(key?: string): void;
 }
 
 export class BrowserStorageService implements StorageService {
-  read(): string | null {
-    return window.localStorage.getItem(STORAGE_KEY);
+  read(key: string = STORAGE_KEY): string | null {
+    return window.localStorage.getItem(key);
   }
 
-  write(value: string): void {
-    window.localStorage.setItem(STORAGE_KEY, value);
+  write(value: string, key: string = STORAGE_KEY): void {
+    window.localStorage.setItem(key, value);
+  }
+
+  remove(key: string = STORAGE_KEY): void {
+    window.localStorage.removeItem(key);
   }
 }
 
 export interface ImageService {
   readFile(file: File): Promise<ImageAsset>;
+  verifyImage(image: ImageAsset): Promise<void>;
   demo(): ImageAsset;
 }
 
@@ -29,13 +36,44 @@ export class BrowserImageService implements ImageService {
       reader.onerror = () => reject(new Error('图片读取失败，请换一张图片重试。'));
       reader.onload = () => {
         const src = typeof reader.result === 'string' ? reader.result : '';
-        const image = new Image();
-        image.onerror = () => reject(new Error('图片格式无法识别。'));
-        image.onload = () => resolve({ src, width: image.naturalWidth, height: image.naturalHeight, name: file.name });
-        image.src = src;
+        this.loadImage(src)
+          .then((loaded) => this.decodeImage(loaded))
+          .then((loaded) => resolve({ src, width: loaded.naturalWidth, height: loaded.naturalHeight, name: file.name }))
+          .catch(() => reject(new Error('图片格式无法识别或数据不完整。')));
       };
       reader.readAsDataURL(file);
     });
+  }
+
+  async verifyImage(image: ImageAsset): Promise<void> {
+    if (!image.src || image.width <= 0 || image.height <= 0) {
+      throw new Error('图片数据不完整。');
+    }
+    try {
+      const loaded = await this.loadImage(image.src);
+      await this.decodeImage(loaded);
+      if (loaded.naturalWidth !== image.width || loaded.naturalHeight !== image.height) {
+        throw new Error('图片尺寸信息已损坏。');
+      }
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('图片无法显示。');
+    }
+  }
+
+  private loadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('图片无法显示。'));
+      image.src = src;
+    });
+  }
+
+  private async decodeImage(image: HTMLImageElement): Promise<HTMLImageElement> {
+    if (typeof image.decode === 'function') {
+      await image.decode();
+    }
+    return image;
   }
 
   demo(): ImageAsset {

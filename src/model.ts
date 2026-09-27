@@ -7,6 +7,7 @@ export interface ImageAsset {
   width: number;
   height: number;
   name: string;
+  unavailable?: boolean;
 }
 
 export interface CropVariant {

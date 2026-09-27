@@ -50,8 +50,26 @@ export function makeVariant(crop: CropVariant, id: string): CropVariant {
   return { ...normalizeCrop(crop), id };
 }
 
+export function isImageAsset(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.src === 'string'
+    && candidate.src.length > 0
+    && typeof candidate.name === 'string'
+    && typeof candidate.width === 'number'
+    && Number.isFinite(candidate.width)
+    && candidate.width > 0
+    && typeof candidate.height === 'number'
+    && Number.isFinite(candidate.height)
+    && candidate.height > 0;
+}
+
 export function isFrameDocument(value: unknown): value is FrameDocument {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<FrameDocument>;
-  return candidate.version === 1 && typeof candidate.guides === 'object' && candidate.crop !== undefined && Array.isArray(candidate.variants);
+  return candidate.version === 1
+    && typeof candidate.guides === 'object'
+    && candidate.crop !== undefined
+    && Array.isArray(candidate.variants)
+    && (candidate.image === null || isImageAsset(candidate.image));
 }
