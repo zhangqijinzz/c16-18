@@ -20,6 +20,7 @@ export class BrowserStorageService implements StorageService {
 export interface ImageService {
   readFile(file: File): Promise<ImageAsset>;
   demo(): ImageAsset;
+  verify(image: ImageAsset): Promise<ImageAsset>;
 }
 
 export class BrowserImageService implements ImageService {
@@ -35,6 +36,19 @@ export class BrowserImageService implements ImageService {
         image.src = src;
       };
       reader.readAsDataURL(file);
+    });
+  }
+
+  verify(image: ImageAsset): Promise<ImageAsset> {
+    return new Promise((resolve, reject) => {
+      const probe = new Image();
+      probe.onerror = () => reject(new Error('本地保存的图片数据已损坏，无法显示。'));
+      probe.onload = () => {
+        const width = probe.naturalWidth || image.width;
+        const height = probe.naturalHeight || image.height;
+        resolve({ ...image, width, height });
+      };
+      probe.src = image.src;
     });
   }
 

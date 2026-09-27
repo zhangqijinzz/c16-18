@@ -33,6 +33,7 @@ export interface ViewState {
   compareOpen: boolean;
   notice: string;
   error: string | null;
+  imageBroken: boolean;
 }
 
 export const DEFAULT_CROP: CropVariant = {

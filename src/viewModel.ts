@@ -7,7 +7,7 @@ import type { ImageService } from './service';
 type Listener = () => void;
 
 export class FrameSenseViewModel {
-  private state: ViewState = { phase: 'loading', document: structuredClone(EMPTY_DOCUMENT), compareOpen: false, notice: '', error: null };
+  private state: ViewState = { phase: 'loading', document: structuredClone(EMPTY_DOCUMENT), compareOpen: false, notice: '', error: null, imageBroken: false };
   private readonly listeners = new Set<Listener>();
 
   constructor(private readonly repository: FrameRepository, private readonly imageService: ImageService) {}
@@ -25,7 +25,7 @@ export class FrameSenseViewModel {
   }
 
   private persist(document: FrameDocument, notice: string): void {
-    this.patch({ document, phase: 'editing', notice, error: null });
+    this.patch({ document, phase: 'editing', notice, error: null, imageBroken: false });
     try {
       this.repository.save(document);
     } catch {
@@ -34,21 +34,41 @@ export class FrameSenseViewModel {
   }
 
   async initialize(): Promise<void> {
-    this.patch({ phase: 'loading', notice: '正在恢复上次工作状态…', error: null });
+    this.patch({ phase: 'loading', notice: '正在恢复上次工作状态…', error: null, imageBroken: false });
+    let document: FrameDocument;
     try {
-      const document = this.repository.load();
-      this.patch({ document, phase: document.image ? 'editing' : 'ready', notice: document.image ? '已恢复上次工作状态' : '欢迎来到 FrameSense，先载入示例或导入图片。' });
+      document = this.repository.load();
     } catch {
       this.patch({ phase: 'error', notice: '未能读取历史状态，可继续新建工作。', error: '本地数据读取失败。' });
+      return;
+    }
+    if (!document.image) {
+      this.patch({ document, phase: 'ready', notice: '欢迎来到 FrameSense，先载入示例或导入图片。' });
+      return;
+    }
+    try {
+      const image = await this.imageService.verify(document.image);
+      this.patch({ document: { ...document, image }, phase: 'editing', notice: '已恢复上次工作状态' });
+    } catch {
+      const kept = document.variants.length;
+      this.patch({
+        document: { ...document, image: null },
+        phase: 'error',
+        notice: '',
+        error: `上次保存的图片数据已损坏，无法显示。${kept > 0 ? `${kept} 个裁切方案` : '裁切方案'}与设置仍保留在本地，请重新导入同一张图片。`,
+        imageBroken: true,
+      });
     }
   }
 
   async importImage(file: File): Promise<void> {
-    this.patch({ phase: 'loading', notice: '正在载入图片…', error: null });
+    this.patch({ phase: 'loading', notice: '正在载入图片…', error: null, imageBroken: false });
     try {
       const image = await this.imageService.readFile(file);
-      const document: FrameDocument = { ...structuredClone(EMPTY_DOCUMENT), image };
-      this.persist(document, '图片已载入，可以开始构图。');
+      const restoring = !this.state.document.image && this.state.document.variants.length > 0;
+      const base = this.state.document.image ? EMPTY_DOCUMENT : this.state.document;
+      const document: FrameDocument = { ...structuredClone(base), image };
+      this.persist(document, restoring ? `图片已重新导入，${document.variants.length} 个裁切方案与设置已接着使用。` : '图片已载入，可以开始构图。');
     } catch (error) {
       this.patch({ phase: 'error', error: error instanceof Error ? error.message : '图片载入失败。' });
     }
